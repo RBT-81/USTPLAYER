@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
 ════════════════════════════════════════════════════════════════════════════
- UST PLAYER v80 — single-file visual animation player
+ UST PLAYER v82 — single-file visual animation player
 ════════════════════════════════════════════════════════════════════════════
 
  ONE self-contained HTML file: CSS + HTML + JavaScript (Canvas 2D and SVG).
@@ -20,6 +20,14 @@
    The board can be snapshotted to PNG or mirrored in an external window. Long-term goal: a visual animated score
    driven by a MIDI/DSP clock for a DAW / Max / TouchDesigner pipeline — only the Clock facade exists so far.
 
+ CHANGES IN v82 (vs v81) — USTc starting forms
+   - The USTc tab only shows the starting species (the SETPA relevés gallery is hidden for now; its code stays).
+   - Each starting species gets a form of its own, non figurative, made of point / line / polygon / stroke vibrancy only, fitted to
+     its role in the ecosystem and its way of moving (UC_FORMES). Forms with a front (Fauve, Chaîne) turn toward their heading.
+ CHANGES IN v81 (vs v80) — still catalogue thumbnails
+   - USTp thumbnails are STILL, on an iconic image of the sign (the fullest of 12 sampled images of its cycle).
+   - The hovered thumbnail plays, from the start of its cycle.
+   - "Tout lire" (view bar of the catalogue) plays every thumbnail, at an adjustable frame rate (2 to 25 images / s). Remembered.
  CHANGES IN v80 (vs v79) — the output window no longer freezes in full screen
    - The main loop was paced by the main window's requestAnimationFrame only. When the output window goes full screen (projection),
      the browser sees the main window as covered / on another Space and stops its animation frames: clocks stopped, the output froze.
@@ -509,7 +517,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>UST Player v80 — sortie plein écran</title>
+<title>UST Player v82 — formes USTc</title>
 <style>
 /* ════════════════════════════════════════════════════════════════════════════
  * UST PLAYER — STYLESHEET
@@ -4445,7 +4453,7 @@ input[type=range].scrub-src {
      output info + board zoom, panel toggles, board background colour.
 -->
 <div class="topbar">
-  <span class="app-title">UST Player v80</span>
+  <span class="app-title">UST Player v82</span>
   <span class="pill live">LIVE</span>
   <span class="pill" id="cpill">0 actives</span>
   <div class="tempo-bar">
@@ -4526,6 +4534,10 @@ input[type=range].scrub-src {
     <div class="cv-btn on" id="cv-grid" title="Vignettes">&#x25A6;</div>
     <div class="cv-btn" id="cv-list" title="Liste (un seul apercu)">&#x2630;</div>
     <input type="range" id="cat-size" data-scrubbed="1" min="40" max="220" step="2" value="64" title="Taille des apercus">
+    <div class="cv-btn" id="cv-play" title="Tout lire : animer tous les aperçus (sinon image fixe, lecture au survol)">&#9654;</div>
+    <select id="cv-fps" title="Cadence des aperçus quand « Tout lire » est enclenché (images par seconde)" style="display:none;background:#1a1a1a;color:#ccc;border:1px solid rgba(255,255,255,.15);border-radius:4px;font-size:10px;padding:1px 2px">
+      <option value="2">2 i/s</option><option value="4">4 i/s</option><option value="6" selected>6 i/s</option><option value="8">8 i/s</option><option value="12">12 i/s</option><option value="25">25 i/s</option>
+    </select>
   </div>
   <div class="cat-prev" id="cat-prev"><canvas id="cat-prev-cv" width="150" height="150"></canvas><div class="cat-prev-name" id="cat-prev-name">-</div></div>
   <!-- USTp pane (procedural instances). -->
@@ -10345,8 +10357,35 @@ let xfEl = null,
   xfPT = null;  // the point they were turned on for
 
 // v43 — catalogue view, selection, clipboard (SECTION 13b). Declared here because the main loop starts at load time.
-let catTileHov = null;   // v79: the catalogue tile under the pointer (its thumbnail animates; the others refresh every 0.6 s)
-document.addEventListener('pointerover', e => { const t = e.target.closest && e.target.closest('.pi'); catTileHov = t ? t.querySelector('canvas.cat-canvas') : null; }, true);
+/* v81: catalogue thumbnails are STILL (an iconic image of the sign); the hovered one plays from the start of its cycle; "Tout lire"
+   plays them all at catFps images per second. */
+let catTileHov = null, catHovT0 = 0, catPlayAll = false, catFps = 6;
+document.addEventListener('pointerover', e => { const t = e.target.closest && e.target.closest('.pi'), c = t ? t.querySelector('canvas.cat-canvas') : null; if (c !== catTileHov) { if (catTileHov) catTileHov._lt = 0; catTileHov = c; catHovT0 = performance.now(); } }, true);
+try { catPlayAll = localStorage.getItem('ustplayer.catplay') === '1'; catFps = +localStorage.getItem('ustplayer.catfps') || 6; } catch (e) {}
+function catPlayUI() {
+  const b = document.getElementById('cv-play'), f = document.getElementById('cv-fps'); if (!b || !f) return;
+  b.classList.toggle('on', catPlayAll); f.style.display = catPlayAll ? '' : 'none'; f.value = String(catFps);
+}
+document.addEventListener('DOMContentLoaded', catPlayUI); setTimeout(catPlayUI, 0);
+document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('#cv-play')) return; catPlayAll = !catPlayAll; uL.forEach(u => u.cvs.forEach(c => { c._lt = 0; })); try { localStorage.setItem('ustplayer.catplay', catPlayAll ? '1' : '0'); } catch (x) {} catPlayUI(); });
+document.addEventListener('change', e => { if (!e.target || e.target.id !== 'cv-fps') return; catFps = +e.target.value || 6; try { localStorage.setItem('ustplayer.catfps', String(catFps)); } catch (x) {} });
+/** Iconic time (s) of a USTp: for a generator sign, the fullest of 12 sampled images of its cycle (the one with the most drawing). */
+const catIcoC = new WeakMap();
+function catIcoT(u) {
+  if (!u.gen) return .6;
+  const D = Math.max(.1, +u.gen.duree || 2.4), key = D + '|' + (u.gen.couches ? u.gen.couches.length : 0);
+  let e = catIcoC.get(u.gen);
+  if (e && e.key === key) return e.t;
+  let best = D / 3;
+  try {
+    const w = genWin();
+    if (!w) return best;   // editor not ready yet: provisional, not cached
+    let bl = -1;
+    for (let k = 0; k < 12; k++) { const f = (k + .5) / 12, x = w.GEN.svg(u.gen, f, 200, { sec: f * D, bpm }); if (x && x.length > bl) { bl = x.length; best = f * D; } }
+  } catch (x) {}
+  catIcoC.set(u.gen, { key, t: best });
+  return best;
+}
 let catList = false,  // catalogue display: false = grid of tiles, true = compact list + ONE live preview
   catTile = {  // tile side (grid mode) / preview side (list mode), CSS px; each mode remembers its own value
     grid: 64,
@@ -11122,12 +11161,13 @@ let prevT = null;  // previous frame timestamp
 /* v80: the next turn of the main loop comes from the FIRST of: the main window's animation frame, the output window's animation frame
    (the one that keeps running when the output is full screen on a projector and the main window is covered), a 50 ms timer.
    The loop always gets the main window's clock (the two windows' frame timestamps do not share an origin). */
-let loopPend = false;
+let loopPend = false, loopLast = 0;
 function loopNext(cb) {
   if (loopPend) return;
   loopPend = true;
   let done = false;
-  const go = () => { if (done) return; done = true; loopPend = false; cb(performance.now()); };
+  // a frame from the other window arriving right after a turn is skipped (at most one turn per ~12 ms: the loop never runs twice per frame)
+  const go = () => { if (done) return; const now = performance.now(); if (now - loopLast < 12) { setTimeout(go, 12 - (now - loopLast)); return; } done = true; loopPend = false; loopLast = now; cb(now); };
   requestAnimationFrame(go);
   try { if (extW && !extW.closed) extW.requestAnimationFrame(go); } catch (e) {}
   setTimeout(go, 50);
@@ -11146,7 +11186,9 @@ function loopNext(cb) {
   const nowT = performance.now();
   uL.forEach(u => u.cvs.forEach(c => {
     if (!c.isConnected || (catList && c.classList.contains('cat-canvas'))) return;
-    if (c.classList.contains('cat-canvas') && c !== catTileHov) { if (nowT - (c._lt || 0) < 600) return; c._lt = nowT; }   // v79
+    const isCat = c.classList.contains('cat-canvas'), hov = isCat && c === catTileHov;
+    if (isCat && !hov) { if (nowT - (c._lt || 0) < (catPlayAll ? 1000 / catFps : 1000)) return; c._lt = nowT; }   // v81: still (re-checked every second) or all playing at catFps
+    const tDraw = !isCat ? u.t : hov ? (nowT - catHovT0) / 1000 : catPlayAll ? u.t : catIcoT(u);
     const onB = c.classList.contains('ust-canvas'),
       a = onB ? asgn[c.dataset.i] : null;
     const inst = a && a.color ? {
@@ -11154,7 +11196,7 @@ function loopNext(cb) {
       color: a.color
     } : u;
     if (onB) trjCheck(+c.dataset.i, c);
-    dU(c.getContext('2d'), +c.dataset.logsz || c.width, u.t, onB ? trjInst(+c.dataset.i, inst) : inst, onB ? mFx : {});
+    dU(c.getContext('2d'), +c.dataset.logsz || c.width, tDraw, onB ? trjInst(+c.dataset.i, inst) : inst, onB ? mFx : {});
   }));
   // USTa/USTi advance a frame counter (playT) at their own fps; dA() picks the frame from it.
   uaL.forEach(u => u.playT = (u.playT || 0) + dt * (u.fps || 12));
@@ -18754,12 +18796,33 @@ function ucInit() {
   ucSeedGen();
   return ucW;
 }
+/* v82: STARTING FORMS of the species — point, line, polygon and the vibrancy of the stroke, nothing figurative. The morphology follows
+   the role in the ecosystem and the way of moving:
+     grain   (small scavenger, light, gregarious, hops and flies)   : a full POINT, restless stroke ;
+     fauve   (fast solitary hunter, straight runs)                  : a TRIANGLE, taut stroke, pointing where it goes ;
+     anneau  (elastic omnivore, sinuous, swarms and synchronises)   : an open CIRCLE that breathes, lively stroke ;
+     chaine  (sticky scavenger, sinuous, links up in chains)        : an undulating LINE, lying along its path ;
+     mime    (mimic, camouflage, freezes)                           : a SQUARE in dotted, very unsteady stroke, half faded ;
+     colosse (heavy slow predator, dense)                           : a full HEXAGON, thick still stroke, slow swell.
+   Specs in the generator's « relevé » format (releve()) ; `oriente` : the form turns toward the heading. */
+const UC_FORMES = {
+  grain: { n: 20, couches: [{ type: 'anneau', set: { text: 'plein', plein: 1, taille: .1, epais: .003, tremble: .75, dyn: 0 }, anim: { taille: [[0, .1], [.5, .085]] } }] },
+  fauve: { n: 24, oriente: true, couches: [{ type: 'polygone', set: { cotes: 3, anguleux: 1, text: 'vide', plein: 0, taille: .22, angle: 90, epais: .011, tremble: .12, dyn: 0 }, anim: { taille: [[0, .22], [.5, .2]] } }] },
+  anneau: { n: 30, couches: [{ type: 'anneau', set: { text: 'vide', plein: 0, taille: .2, epais: .008, tremble: .6, dyn: 0 }, anim: { taille: [[0, .19], [.5, .235]] } }] },
+  chaine: { n: 30, oriente: true, couches: [{ type: 'trait', set: { taille: .36, angle: 0, epais: .008, tremble: .4, turb: 1, turbT: .6, turbV: 2.2, dyn: 0 }, anim: {} }] },
+  mime: { n: 30, couches: [{ type: 'polygone', set: { cotes: 4, anguleux: 1, text: 'vide', plein: 0, taille: .2, angle: 45, epais: .007, pointille: .9, tremble: .95, opac: .7, dyn: 0 }, anim: { opac: [[0, .7], [.5, .4]] } }] },
+  colosse: { n: 40, couches: [{ type: 'polygone', set: { cotes: 6, anguleux: 1, text: 'plein', plein: 1, taille: .2, epais: .014, tremble: .04, dyn: 0 }, anim: { taille: [[0, .2], [.5, .215]] } }] }
+};
 const UC_EXEMPLES = { grain: 'Point Battement', fauve: 'Carré Flottement', anneau: 'Cercle Battement', chaine: 'Ligne Ondulation', mime: 'Trio Chaine', colosse: 'Trio Liaison' };
 /** Gives each species without a sign one of the generator's built-in signs (the same graphic engine as the USTp). */
 function ucSeedGen() {
   const w = typeof genWin === 'function' ? genWin() : null; if (!w || !ucW) return;
   let ex = null;
   ucW.especes.forEach((sp, i) => {
+    const F = UC_FORMES[sp.id];
+    if (F && w.releve && !sp.sansGen && (!sp.gen || (!sp.genEdite && sp.genSrc !== 'f82'))) {   // v82: the species' own form (replaces the old sample sign unless it was edited)
+      try { sp.gen = JSON.parse(JSON.stringify(w.releve(F))); sp.genSrc = 'f82'; sp.oriente = !!F.oriente; USTC.matVersGen(sp.gen, Object.assign({}, USTC.MAT0, sp.mat)); return; } catch (err) { }
+    }
     if (sp.gen || sp.sansGen) return;
     try { ex = ex || JSON.parse(w.GEN.exemples()); const e = ex.find(x => x.nom === UC_EXEMPLES[sp.id]) || ex[i % ex.length]; sp.gen = JSON.parse(JSON.stringify(e.signe)); USTC.matVersGen(sp.gen, Object.assign({}, USTC.MAT0, sp.mat)); } catch (err) { }
   });
@@ -18906,6 +18969,8 @@ function ucDraw(c, a, dt) {
   const sp = a.mimic || a.sp, gen = sp.gen && genWin() ? sp.gen : null;
   const P = USTC.prims(ucW, a, { sansCorps: !!gen }), px = c._px || c.offsetWidth || 1, rpx = px / 3.6;   // rayon en px de sortie
   const f = gen ? ucFase(a, sp, dt) : 0;
+  let hd = 0;   // v82: forms with a front turn (smoothly) toward where they go
+  if (gen && sp.oriente) { const v = Math.hypot(a.vx || 0, a.vy || 0); if (a._hd == null) a._hd = Math.atan2(a.vy || 0, a.vx || 1); if (v > 4) { let d = Math.atan2(a.vy, a.vx) - a._hd; d = Math.atan2(Math.sin(d), Math.cos(d)); a._hd += d * Math.min(1, (dt || .016) * 6); } hd = a._hd; }
   const vib = (mFx && mFx.vib) || 0, def = (mFx && mFx.deform) || 0;
   const jx = (Math.random() - .5) * (vib * 2 + def * .5), jy = (Math.random() - .5) * (vib * 2 + def * .5);
   const sc = 1 + .55 * a.display, sx = sc * (a.air ? 1.18 : 1), sy = sc * (a.air ? .78 : 1), col = asgn[a.pt] && asgn[a.pt].color || null;
@@ -18914,7 +18979,7 @@ function ucDraw(c, a, dt) {
   ctx.clearRect(0, 0, s, s);
   if (gen) {
     const S = s * 10 / 3.6;
-    ctx.save(); ctx.globalAlpha = P.alpha; ctx.translate(s / 2 + jx * s / px, s / 2 + jy * s / px); if (P.squash > .01) { ctx.rotate(P.sqA); ctx.scale(1 - .3 * P.squash, 1 + .22 * P.squash); ctx.rotate(-P.sqA); } ctx.scale(sx, sy); ctx.translate(-S / 2, -S / 2);
+    ctx.save(); ctx.globalAlpha = P.alpha; ctx.translate(s / 2 + jx * s / px, s / 2 + jy * s / px); if (P.squash > .01) { ctx.rotate(P.sqA); ctx.scale(1 - .3 * P.squash, 1 + .22 * P.squash); ctx.rotate(-P.sqA); } ctx.scale(sx, sy); ctx.rotate(hd); ctx.translate(-S / 2, -S / 2);
     try { genWin().GEN.dessine(ctx, S, gen, f); } catch (e) { }
     ctx.restore();
   }
@@ -18932,7 +18997,7 @@ function ucDraw(c, a, dt) {
   st.transform = c.style.transform || ''; st.opacity = c.style.opacity || '';
   const g0 = v.childNodes[0], g1 = v.childNodes[1], g2 = v.childNodes[2], jt = 'translate(' + (jx / rpx).toFixed(3) + ' ' + (jy / rpx).toFixed(3) + ')';
   if (gen) {
-    g0.setAttribute('transform', jt + (P.squash > .01 ? ' rotate(' + (P.sqA * 57.2958).toFixed(1) + ') scale(' + (1 - .3 * P.squash).toFixed(3) + ' ' + (1 + .22 * P.squash).toFixed(3) + ') rotate(' + (-P.sqA * 57.2958).toFixed(1) + ')' : '') + ' scale(' + (sx * UC_K).toFixed(5) + ' ' + (sy * UC_K).toFixed(5) + ') translate(-500 -500)');
+    g0.setAttribute('transform', jt + (P.squash > .01 ? ' rotate(' + (P.sqA * 57.2958).toFixed(1) + ') scale(' + (1 - .3 * P.squash).toFixed(3) + ' ' + (1 + .22 * P.squash).toFixed(3) + ') rotate(' + (-P.sqA * 57.2958).toFixed(1) + ')' : '') + ' scale(' + (sx * UC_K).toFixed(5) + ' ' + (sy * UC_K).toFixed(5) + ')' + (hd ? ' rotate(' + (hd * 57.2958).toFixed(1) + ')' : '') + ' translate(-500 -500)');
     g0.setAttribute('opacity', P.alpha.toFixed(2));
     const k = sp.gen, key = ucSvgCache.get(k) ? '' : '';
     const m = ucSignSvg(gen, f);
@@ -19010,7 +19075,7 @@ function ucOpenSign(sp, force) {
 }
 function ucApplyGen(id, signe) {
   const sp = ucSpOf(String(id).slice(3)); if (!sp) return;
-  sp.gen = signe; sp.sansGen = false;
+  sp.gen = signe; sp.sansGen = false; sp.genEdite = 1;
   sp.mat = USTC.matiereDe(signe); ucW.pop.forEach(a => { if (a.sp === sp) a.g.mat = Object.assign({}, sp.mat); });   // la matière du signe devient celle de l'espèce
   bUstc(); if (ucWins.comp) ucWinComp();
 }
@@ -19257,7 +19322,6 @@ function bUstc() {
   const onB = new Set(w.pop.map(a => a.sp));
   let h = '';
   h += '<div class="proc-grid" id="ustc-grid" style="padding:0 0 4px"></div>';
-  h += '<div class="ucsec">Relevés SETPA/422 <span class="ucn" style="display:inline">(presets : glisser = ajouter l\'espèce et poser)</span></div><div class="proc-grid" id="ustc-pre-grid" style="padding:0 0 4px"></div>';
   h += '<div class="ucn">Glisser une vignette sur le board pose un individu. Double-clic ou « e » : éditeur du signe + comportement de l\'espèce. Double-clic sur un individu du board : son comportement propre.</div>';
   h += '<div class="ucbar"><div class="uc-b" id="uc-run" title="Lecture / pause de la simulation">' + (ucRun ? '⏸' : '▶') + '</div><div class="uc-b" id="uc-pop" title="Remplir la population jusqu\'à la cible">Peupler</div><div class="uc-b" id="uc-vide" title="Retirer tous les individus">Vider</div><div class="uc-b' + (w.cfg.etiq ? ' on' : '') + '" id="uc-et" title="Afficher le comportement en cours près de chaque individu">Étiq.</div></div>';
   h += '<div class="ucbar"><div class="uc-b" id="uc-rules" title="Règles de toute la population">⚙ Population…</div><div class="uc-b" id="uc-comp" title="Comportement de l\'espèce / de l\'individu sélectionné">Comportement…</div></div>';
@@ -19291,7 +19355,6 @@ function bUstc() {
   $('uc-ded').onchange = () => { ucDedie = $('uc-ded').checked; ucMode(); };
   $('uc-new').onclick = () => { const src = (catSel && catSel.type === 'ustc' && ucSpOf(catSel.id)) || w.especes[ucEsp]; const c = ucCloneSp(src); c.nom = catCopyName('ustc', src.nom); w.especes.splice(w.especes.indexOf(src) + 1, 0, c); ucEsp = w.especes.indexOf(c); catSelect('ustc', c.id); bUstc(); };
   $('uc-new0').onclick = ucNewSp;
-  ucPreGrid(box);  // v50
   ucInfo();
 }
 function ucWinPopRefreshRun() { const b = ucWins.pop && ucWins.pop.querySelector('#uw-run'); if (b) b.textContent = ucRun ? '⏸ Pause' : '▶ Lecture'; }
