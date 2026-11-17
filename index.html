@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
 ════════════════════════════════════════════════════════════════════════════
- UST PLAYER v83 — single-file visual animation player
+ UST PLAYER v84 — single-file visual animation player
 ════════════════════════════════════════════════════════════════════════════
 
  ONE self-contained HTML file: CSS + HTML + JavaScript (Canvas 2D and SVG).
@@ -20,6 +20,10 @@
    The board can be snapshotted to PNG or mirrored in an external window. Long-term goal: a visual animated score
    driven by a MIDI/DSP clock for a DAW / Max / TouchDesigner pipeline — only the Clock facade exists so far.
 
+ CHANGES IN v84 (vs v83) — when the signs do not load, say why
+   - The built-in signs come from the embedded USTp editor. If it fails to start (browser, extension...), the catalogue was silently
+     empty. Now: the editor's errors are recorded, the loading is retried, and after 5 s an orange notice in the catalogue gives
+     the reason and the browser.
  CHANGES IN v83 (vs v82) — the catalogue keeps its signs
    - Restoring a previous session or opening an older project replaced the catalogue by the saved one: the SETPA signs added since
      were missing (an old session on the web site showed none of them). The missing ones are now added back after every restore.
@@ -520,7 +524,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>UST Player v83 — catalogue</title>
+<title>UST Player v84 — diagnostic</title>
 <style>
 /* ════════════════════════════════════════════════════════════════════════════
  * UST PLAYER — STYLESHEET
@@ -4456,7 +4460,7 @@ input[type=range].scrub-src {
      output info + board zoom, panel toggles, board background colour.
 -->
 <div class="topbar">
-  <span class="app-title">UST Player v83</span>
+  <span class="app-title">UST Player v84</span>
   <span class="pill live">LIVE</span>
   <span class="pill" id="cpill">0 actives</span>
   <div class="tempo-bar">
@@ -10581,6 +10585,7 @@ function genWin() {
   }
 }
 
+const genDiag = {};
 (function genBoot() {
   try {
     const src = document.getElementById('gen-src');
@@ -10606,10 +10611,31 @@ function genWin() {
       if (!w || !w.GEN.ops) return;
       e.currentTarget.classList.toggle('on', !!w.GEN.ops(null, e.currentTarget.getBoundingClientRect()));
     });
-    genFrame.srcdoc = new TextDecoder('utf-8').decode(bytes);
+    // v84: record the editor's own errors (a script that fails to parse or to start), for the notice in the catalogue
+    const spy = '<scr' + 'ipt>window.__err=[];window.addEventListener("error",function(e){window.__err.push((e.message||"erreur")+" (ligne "+(e.lineno||"?")+":"+(e.colno||"?")+")")});<\/script>';
+    genFrame.srcdoc = spy + new TextDecoder('utf-8').decode(bytes);
   } catch (e) {
     console.warn('USTp editor (generator) not loaded:', e);
+    genDiag.boot = String(e && e.message || e);
   }
+})();
+/* v84: the signs of the catalogue come from the editor. Retry while it is not there; after 5 s say why in the catalogue. */
+(function genGuet() {
+  let n = 0;
+  const t = setInterval(() => {
+    n++;
+    const w = genWin(), ok = uL.some(u => u.gen);
+    if (w && !ok) genPresets(w);
+    if (uL.some(u => u.gen) && document.querySelectorAll('#proc-grid .pi').length) { const d = document.getElementById('gen-diag'); if (d) d.remove(); clearInterval(t); return; }
+    if (n < 5) return;
+    let why = genDiag.boot || genDiag.presets || '';
+    try { const fw = genFrame && genFrame.contentWindow; if (fw && fw.__err && fw.__err.length) why = fw.__err.slice(0, 3).join(' · '); else if (!why) why = !genFrame ? 'cadre absent' : !fw ? 'cadre inaccessible' : !fw.GEN ? 'éditeur non démarré (état : ' + (fw.document && fw.document.readyState) + ', scripts peut-être bloqués)' : 'éditeur chargé, signes non ajoutés'; } catch (e) { why = why || 'cadre bloqué : ' + e.message; }
+    const g = document.getElementById('proc-grid'); if (!g) return;
+    let d = document.getElementById('gen-diag');
+    if (!d) { d = document.createElement('div'); d.id = 'gen-diag'; d.style.cssText = 'grid-column:1/-1;margin:6px;padding:8px;border:1px solid #ff9a3c;border-radius:6px;color:#ffb36b;font-size:11px;line-height:1.4;user-select:text;white-space:normal'; g.prepend(d); }
+    d.textContent = 'Les signes USTp n\'ont pas pu être chargés. Raison : ' + why + ' — ' + navigator.userAgent;
+    if (n > 40) clearInterval(t);
+  }, 1000);
 })();
 
 /** Draws a USTp item that carries a generator sign (u.gen). Same contract as dU: clears the canvas, s = reference side.
@@ -10780,7 +10806,7 @@ function genPresets(w) {
       bPTs();
       if (document.getElementById('ustc-grid')) bUstc();
     }
-  } catch (e) {}
+  } catch (e) { genDiag.presets = 'signes : ' + (e && e.message || e); console.warn(e); }
 }
 
 /** Opens the new editor on USTp `u`, in the editor panel of the app (docked tab or floating window, like the v44 editor). */
