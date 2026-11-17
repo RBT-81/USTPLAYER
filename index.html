@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
 ════════════════════════════════════════════════════════════════════════════
- UST PLAYER v82 — single-file visual animation player
+ UST PLAYER v83 — single-file visual animation player
 ════════════════════════════════════════════════════════════════════════════
 
  ONE self-contained HTML file: CSS + HTML + JavaScript (Canvas 2D and SVG).
@@ -20,6 +20,9 @@
    The board can be snapshotted to PNG or mirrored in an external window. Long-term goal: a visual animated score
    driven by a MIDI/DSP clock for a DAW / Max / TouchDesigner pipeline — only the Clock facade exists so far.
 
+ CHANGES IN v83 (vs v82) — the catalogue keeps its signs
+   - Restoring a previous session or opening an older project replaced the catalogue by the saved one: the SETPA signs added since
+     were missing (an old session on the web site showed none of them). The missing ones are now added back after every restore.
  CHANGES IN v82 (vs v81) — USTc starting forms
    - The USTc tab only shows the starting species (the SETPA relevés gallery is hidden for now; its code stays).
    - Each starting species gets a form of its own, non figurative, made of point / line / polygon / stroke vibrancy only, fitted to
@@ -517,7 +520,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>UST Player v82 — formes USTc</title>
+<title>UST Player v83 — catalogue</title>
 <style>
 /* ════════════════════════════════════════════════════════════════════════════
  * UST PLAYER — STYLESHEET
@@ -4453,7 +4456,7 @@ input[type=range].scrub-src {
      output info + board zoom, panel toggles, board background colour.
 -->
 <div class="topbar">
-  <span class="app-title">UST Player v82</span>
+  <span class="app-title">UST Player v83</span>
   <span class="pill live">LIVE</span>
   <span class="pill" id="cpill">0 actives</span>
   <div class="tempo-bar">
@@ -10769,7 +10772,7 @@ function genPresets(w) {
       const nm = 'SETPA · ' + r.nom;
       const old = uL.find(u => u.name === nm);
       if (old) { if (!old.genEdite && JSON.stringify(old.gen) !== JSON.stringify(r.signe)) { old.gen = r.signe; n++; } return; }   // v70: a SETPA preset follows the generator's current relevé unless you edited it
-      uL.push({ id: 'u_setpa_' + i, name: nm, color: '#ffffff', shapes: [shDefault()], motionId: 'ondulation', motionParams: {}, hierarchy: hierDefault(), cycle: cycleDefault(), gen: r.signe, cvs: [], t: Math.random() * 3 });
+      uL.push({ id: uL.some(u => u.id === 'u_setpa_' + i) ? 'u_setpa_' + i + '_' + Date.now().toString(36) + i : 'u_setpa_' + i, name: nm, color: '#ffffff', shapes: [shDefault()], motionId: 'ondulation', motionParams: {}, hierarchy: hierDefault(), cycle: cycleDefault(), gen: r.signe, cvs: [], t: Math.random() * 3 });
       n++;
     });
     if (n) {
@@ -13375,6 +13378,7 @@ function projectRestore(p) {
   rH();
   uC();
   if (typeof undoReset === 'function') undoReset();  // a loaded project starts with an empty history
+  { const gw = typeof genWin === 'function' ? genWin() : null; if (gw) genPresets(gw); }   // v83: the built-in signs the saved project lacks
   return {
     proc: uL.length,
     anim: uaL.length,
